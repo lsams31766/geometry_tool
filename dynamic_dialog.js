@@ -43,9 +43,13 @@ async function handleAction() {
     // console.log(result_list.length);
     // make it look nice
     // let txt = '';
-    const prettyJson = JSON.stringify(result_list, null, 2);
+    //const prettyJson = JSON.stringify(result_list, null, 2);
     // console.log(prettyJson);
-    $('#dialogResult').val(prettyJson);
+    let txt = '';
+    Object.keys(result_list).forEach(key =>{
+        txt += key + ':' + result_list[key] + '\n';
+    })
+    $('#dialogResult').val(txt);
     dialogDone('grid_dialog',result_list);
 }
 // --------- ASYNC MAJIC ENDS HERE ---------------
@@ -68,12 +72,13 @@ $(document).ready( () => {
     });
 
     // format list of objects
-    // each object [text, {object_name:[param1, param2]}]
+    // each object [text, {object_name:[param1, param2, paramX]}]
+    // note: paramX is the selected value (or current value for input box)
     gridDialog = [
-        ['Grid',{'gridOnOff':['select','On','Off']}],
-        ['Grid Type',{'gridType':['select','Dots','Grid']}],
+        ['Grid',{'gridOnOff':['select','On','Off','Off']}],
+        ['Grid Type',{'gridType':['select','Dots','Grid','Dots']}],
         ['Grid Spacing',{'gridSpacing':['input','25']}], // 25 is default value for input box
-        ['Snap',{'snapOnOff':['select','On','Off']}]
+        ['Snap',{'snapOnOff':['select','On','Off','Off']}]
     ]
 
     const AppendRow = (targetDiv, rowClass) => {
@@ -117,16 +122,20 @@ $(document).ready( () => {
         var $tDiv = targetDiv; // where to append the control to
         if (input_obj_type == 'select') { // select drop down
             var selStr = '<select class=form-control id="' + objId+ '">';
-            var $selElelment = $(selStr);
-            $tDiv.append($selElelment);
+            var $selElement = $(selStr);
+            $tDiv.append($selElement);
             // put in the options for the select drop down
             const options = input_obj[ObjName].slice(1);
+            // last item is default - pop it off
+            selected_option = options.pop();
             options.forEach((o) => {
-                var $tDiv = $selElelment;
+                var $tDiv = $selElement;
                 var optStr = '<option value="' + o + '">' + o + '</option>';
                 var $optElelment = $(optStr);
                 $tDiv.append($optElelment);
             });
+            // set selected value
+            $selElement.val(selected_option);
         } 
         if (input_obj_type == 'input') { // input box
             const val = input_obj[ObjName][1];
@@ -170,7 +179,7 @@ $(document).ready( () => {
 
     GetControlValues = (dialogObj) => {
         // return user selected values
-        var output_list = [];
+        var result_list = [];
         for (const row of dialogObj) {
             input_obj = row[1];
             ObjName = String(Object.keys(input_obj)[0]);
@@ -182,9 +191,29 @@ $(document).ready( () => {
             if (input_obj_type == 'input') {
                 val = $('#' + ObjName).val();
             }
-            output_list.push({[ObjName]:val})
+            result_list[ObjName] = val;
         }
-        return output_list;
+        // also update defaults for the original object
+        Object.keys(result_list).forEach(key =>{
+            // find the matching key
+            for (const row of dialogObj) {
+                input_obj = row[1];
+                ObjName = String(Object.keys(input_obj)[0]);
+                input_obj_type = input_obj[ObjName][0];
+                if (ObjName == key) {
+                    // change default value - just input for now
+                    if (input_obj_type == 'input') {
+                        input_obj[ObjName][1] = result_list[key];
+                    }
+                    if (input_obj_type == 'select') {
+                        l = input_obj[ObjName].length;
+                        // last value is selected value
+                        input_obj[ObjName][l-1] = result_list[key];
+                    }
+                }
+            }
+        })
+        return result_list;
     };
 
 

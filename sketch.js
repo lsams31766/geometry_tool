@@ -481,9 +481,9 @@ class Canvas {
     // this.buffer = createGraphics(920, 600);
     // this.buffer.pixelDensity(pixelDensity()); 
     this.buffer = createGraphics(w, h);
-    this.buffer2 = createGraphics(w, h);
+    this.buffer2 = createGraphics(w, h); // for grid
     this.buffer.background("white");
-    this.buffer2.background("white");
+    this.buffer2.background("white"); // for grid
   }
 
   display() {
@@ -835,112 +835,46 @@ function dialogDone(dialog_name, result_list) {
         ['Grid Type',{'gridType':['select','Dots','Grid']}],
         ['Grid Spacing',{'gridSpacing':['input','25']}], // 25 is default value for input box
         ['Snap',{'snapOnOff':['select','On','Off']}]
-    ]
+      
+        result_list = { 'gridOnOff':Off, 'gridType':Dots, 
+                        'gridSpacing:25', 'snapOnOff:Off }
     */
-    const newGridOnOff = result_list[0]['gridOnOff'];
-    const newGridType = result_list[1]['gridType'];
-    const newGridSpacing = result_list[2]['gridSpacing'];
-    const newSnapOnOff = result_list[3]['snapOnOff'];
-    //if (newGridOnOff != gridOnOff) {
-      // turn on/off grid, apply grid type and spacing
-      TurnOnOffGrid(newGridOnOff, newGridSpacing, newGridType);
-    //} else if (gridOnOff == 'On') { // all ready on, adjust settings
-    //  TurnOnOffGrid(newGridOnOff. newGridSpacing, newGridType);
-   // }
-    gridOnOff = newGridOnOff;
-    gridType = newGridType;
-    GridSpacing = newGridSpacing;
-    Snap = newSnapOnOff; // TODO setting snap
+    // update globals
+    gridOnOff = result_list['gridOnOff'];
+    gridType = result_list['gridType'];
+    gridSpacing = Number(result_list['gridSpacing']);
+    Snap = result_list['snapOnOff'];
   }
 }
 
 function drawGrid() {
-  const spacing = 50;  // to adjust per user
+  const spacing = gridSpacing;  // adjust per user
   const rSize = 4;
-  push();
-  cv = paintWindow.canvas;
-  const c = cv.buffer2; // 2nd layer for grid?
+
+  cv = paintWindow.canvas; // for dimensions
+  const c = cv.buffer2; // 2nd layer for grid
   c.stroke('black');
   c.strokeWeight(1);
-  c.translate(-50,-50);
-  //rectMode(CENTER);
   c.fill(0);
-  // rect(25, 25, 50, 50);
 
-  // TODO delete the dots or grid - or try layers or some other technique
-
-
-  // // here do dots or lines
+  // here do dots or lines
   if (gridOnOff == 'On') {
     if (gridType == 'Dots') {
       // dots
-      for(y = 0; y < cv.h + 50; y += 50) {
-        for(x = 0; x < cv.w + 50; x += 50) {
+      for(y = 0; y < cv.h + 50; y += spacing) {
+        for(x = 0; x < cv.w + 50; x += spacing) {
           c.rect(x,y,rSize,rSize);
         } 
       } 
       } else {
         // lines
         c.strokeWeight(3);
-        for (y=0; y<cv.h + 50; y += 50) {
-          c.line(0, y, cv.w + 50, y);
+        for (y=0; y<cv.h; y += spacing) {
+          c.line(0, y, cv.w, y);
         }
-        for (x=0; x<cv.w + 50; x += 50) {
-          c.line(x, 0, x, cv.h + 50);
-        }
-      }
-  }
-
-
-  // todo turn off grid
-  pop();
-  c.translate(50,50);
-  return;
-
-}
-
-function TurnOnOffGrid(newGridOnOff, newGridSpacing, newGridType)
-{
-  drawGrid();
-  return;
-  const spacing = 50;  // to adjust per user
-  const rSize = 4;
-  push();
-  cv = paintWindow.canvas;
-  const c = cv.buffer;
-  c.stroke('black');
-  c.strokeWeight(1);
-  c.translate(-50,-50);
-  //rectMode(CENTER);
-  c.fill(0);
-  // rect(25, 25, 50, 50);
-
-  // TODO delete the dots or grid - or try layers or some other technique
-
-
-  // // here do dots or lines
-  if (newGridOnOff == 'On') {
-    if (newGridType == 'Dots') {
-      // dots
-      for(y = 0; y < cv.h + 50; y += 50) {
-        for(x = 0; x < cv.w + 50; x += 50) {
-          c.rect(x,y,rSize,rSize);
-        } 
-      } 
-      } else {
-        // lines
-        c.strokeWeight(3);
-        for (y=0; y<cv.h + 50; y += 50) {
-          c.line(0, y, cv.w + 50, y);
-        }
-        for (x=0; x<cv.w + 50; x += 50) {
-          c.line(x, 0, x, cv.h + 50);
+        for (x=0; x<cv.w; x += spacing) {
+          c.line(x, 0, x, cv.h);
         }
       }
   }
-
-
-  // todo turn off grid
-  // pop();
-  // c.translate(50,50);
 }
