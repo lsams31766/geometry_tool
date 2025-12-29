@@ -37,6 +37,8 @@ let gridType = 'Dots';
 let gridSpacing = 25;
 let Snap = 'Off';
 
+let DrawnObjects = [];
+
 /*
 const AVAILABLE_TOOLS = [
   "eraser",
@@ -55,7 +57,8 @@ const AVAILABLE_TOOLS = [
     "rect",
     "circle",
     "letter",
-    "grid"
+    "grid",
+    "eraser"
   ];
   
 const WEB_COLORS = [
@@ -288,6 +291,11 @@ class Button {
 
   mousePressed(mx, my) {
     // onsole.log("mousePressed Button")
+    if (currentTool == 'eraser') {
+      cursor(CROSS);
+    } else {
+      cursor(ARROW);
+    }
     if (
       mx > this.x &&
       mx < this.x + this.w &&
@@ -300,6 +308,13 @@ class Button {
       if (currentTool == 'grid') {
         handleAction();
         console.log("handleAction done");  
+      }
+      if (currentTool == 'eraser') {
+        cursor(CROSS);
+        // modifier to erase all
+        if (keyIsPressed === true) {
+          eraseAll(); // remove all user objects - we should have an undo!
+        };
       }
     }
   }
@@ -491,7 +506,8 @@ class Canvas {
     this.buffer2.clear() // make the grid transparent
     rect(this.x, this.y, this.w, this.h);
     drawGrid();
-    image(this.buffer, this.x, this.y);
+    // image(this.buffer, this.x, this.y); // old way try object drawing
+    drawObjects();
     image(this.buffer2, this.x, this.y);
 
     if (this.isDrawingGeometry()) {
@@ -559,11 +575,29 @@ class Canvas {
 
     switch (shape) {
       case "line":
-        c.line(x1, y1, x2, y2);
+        if (persist == false) {
+          c.line(x1, y1, x2, y2);
+        } else {
+          if (Snap == 'On') {
+            [x1,y1] = nearestSnap(x1,y1);
+            [x2,y2] = nearestSnap(x2,y2);
+          }
+          const o = {'line':[x1,y1,x2,y2]};
+          DrawnObjects.push(o);  
+        }
         break;
       case "rect":
-        c.noFill();
-        c.rect(x1, y1, x2 - x1, y2 - y1);
+        if (persist == false) {
+          c.noFill();
+          c.rect(x1, y1, x2 - x1, y2 - y1);
+        } else {
+          if (Snap == 'On') {
+            [x1,y1] = nearestSnap(x1,y1);
+            [x2,y2] = nearestSnap(x2,y2);
+          }
+          const o = {'rect':[x1, y1, x2 - x1, y2 - y1]};
+          DrawnObjects.push(o);  
+        }
         break;
 
       case "letter":
@@ -575,7 +609,13 @@ class Canvas {
         c.textAlign(CENTER, CENTER);
         c.fill(0, 0, 255); // RGB: Red, Green, Blue (0-255)
         //c.text("X", x1, y1);
-        c.text("Y", x2, y2);
+
+        if (persist == false) {
+          c.text("Y", x2, y2);
+        } else {
+          const o = {'letter':["Y",x2,y2]};
+          DrawnObjects.push(o);  
+        }
         //c.text("Z", mouseX, mouseY);
 
         //text("A", x1, y1);
@@ -584,16 +624,31 @@ class Canvas {
         break;    
 
       case "circle":
-        c.noFill();
-        let radiusX = (x2 - x1) / 2;
-        let radiusY = (y2 - y1) / 2;
-        c.ellipse(
-          x1 + radiusX,
-          y1 + radiusY,
-          Math.abs(radiusX * 2),
-          Math.abs(radiusY * 2)
-        );
+      let radiusX = (x2 - x1) / 2;
+      let radiusY = (y2 - y1) / 2;
+      if (persist == false) {
+          c.noFill();
+          c.ellipse(
+            x1 + radiusX,
+            y1 + radiusY,
+            Math.abs(radiusX * 2),
+            Math.abs(radiusY * 2)
+          );
+        } else {
+          const o = {'circle':[x1 + radiusX, 
+                              y1 + radiusY,
+                              Math.abs(radiusX * 2), 
+                              Math.abs(radiusY * 2)]};
+          DrawnObjects.push(o);  
+        }
         break;
+
+        case "eraser":
+          if (persist) {
+            // console.log("draw eraser",x1,y1,x2,y2,persist);
+            erase_object(x2,y2);
+          }
+          break;
     }
   }
 
@@ -620,6 +675,7 @@ class Canvas {
       case "rect":
       case "circle":
       case "letter":
+      case "eraser":
         this.beginGeometry(adjustedX, adjustedY);
         break;
       case "spray":
@@ -877,4 +933,171 @@ function drawGrid() {
         }
       }
   }
+}
+
+// object drawing routines
+function drawObjects() { 
+  // draw user Objects that can be erased
+  cv = paintWindow.canvas; // for dimensions
+  const c = cv.buffer; // 1st layer for canvas drawing
+  // TODO - get the color, weight, fill for the line,rect,circle...
+  c.stroke('black');
+  c.strokeWeight(5);
+  c.fill(0);
+  
+  // user objects
+  /*
+       o = {'line':[x1,y1,x2,y2]};
+       DrawnObjects.push(o); 
+  */
+
+  // force only lines to remain - so we can remove what we want
+  // need all other other shapes put into DrawnObjects to restore functionality
+  cv.buffer.background("white");
+
+  const l = DrawnObjects.length;
+  if (l > 0 ) {
+    // just show the lines
+    for (let obj = 0; obj < l; obj++) {
+      //first_line = DrawnObjects[0];
+      key = Object.keys(DrawnObjects[obj])[0]; 
+      if (key == 'line') {
+        const [x1, y1, x2, y2] = DrawnObjects[obj][key]; // Yay destructuring
+        c.line(x1, y1, x2, y2);
+      }
+      if (key == 'rect') {
+        const [x1, y1, w, h] = DrawnObjects[obj][key];
+        c.noFill();
+        c.rect(x1, y1, w, h);
+      }
+      if (key == 'letter') {
+        const [ch, x, y] = DrawnObjects[obj][key];
+        c.text(ch, x, y);
+      }
+      if (key == 'circle') {
+        const [x, y, r1, r2] = DrawnObjects[obj][key];
+        c.noFill();
+        c.ellipse(x, y, r1, r1);
+      }
+    }
+  }
+  
+  image(cv.buffer, cv.x, cv.y); // old way try object drawing
+}
+
+function eraseAll() {
+  // erase all user objects (later choose objects option)
+  const cv = paintWindow.canvas;
+  cv.buffer.background("white");
+  DrawnObjects = [];
+}
+
+function isPointOnLineSegment(x, y, x1, y1, x2, y2, margin = 3) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lineLengthSq = dx * dx + dy * dy;
+
+  // Handle case where the line is a single point
+  if (lineLengthSq === 0) {
+      const dist = Math.sqrt(Math.pow(x - x1, 2) + Math.pow(y - y1, 2));
+      return dist <= margin;
+  }
+
+  // Calculate the projection of the point onto the line
+  // Parameter 't' indicates where the point projects onto the line (0 = start, 1 = end)
+  const t = ((x - x1) * dx + (y - y1) * dy) / lineLengthSq;
+
+  // Constrain 't' to the range [0, 1] to check only the line segment
+  // If t is outside [0, 1], the closest point is one of the endpoints
+  const t_clamped = Math.max(0, Math.min(1, t));
+
+  // Find the coordinates of the closest point on the line segment
+  const closestX = x1 + t_clamped * dx;
+  const closestY = y1 + t_clamped * dy;
+
+  // Calculate the distance from the given point to the closest point on the segment
+  const distance = Math.sqrt(Math.pow(x - closestX, 2) + Math.pow(y - closestY, 2));
+
+  // Check if the distance is within the specified margin
+  return distance <= margin;
+}
+
+function isPointInRectangle(x, y, x1, y1, x2, y2, margin = 3) {
+  // expand the box by margin
+  x1 = x1 - margin;
+  y1 = y1 - margin;
+  x2 = x2 + margin;
+  y2 = y2 + margin;
+
+  if ((x>=x1) && (y>=y1) && (x<=x2) && (y<=y2)) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+function isPointInCircle(x, y, x1, y1, radius, margin=3) {
+  let d = dist(x, y, x1, y1); // Calculate distance
+  if (d < radius + margin) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+
+function erase_object(eraserX, eraserY) {
+  // erase object that intersects given parameters
+  const l = DrawnObjects.length;
+  for (let i = 0; i < l; i++) {
+    //first_line = DrawnObjects[0];
+    key = Object.keys(DrawnObjects[i])[0]; 
+    if (key == 'line') {
+      const [x1, y1, x2, y2] = DrawnObjects[i][key]; // coords of line
+      if (isPointOnLineSegment(eraserX, eraserY, x1,y1,x2,y2,6)) {
+        // console.log('Found line - removing it!')
+        DrawnObjects.splice(i, 1)
+        break; // only do 1 at a time
+      }
+    }
+    if (key == 'rect') {
+      const [x1, y1, w, h] = DrawnObjects[i][key]; // coords of line
+      if (isPointInRectangle(eraserX, eraserY, x1,y1,x1+w,y1+h,6)) {
+        // console.log('Found rect - removing it!')
+        DrawnObjects.splice(i, 1)
+        break; // only do 1 at a time
+      }
+    }
+    if (key == 'circle') {
+      const [x, y, r1, r2] = DrawnObjects[i][key];
+      if (isPointInCircle(eraserX, eraserY, x, y, r1, 6)) {
+        // console.log('Found circle - removing it!')
+        DrawnObjects.splice(i,1);
+        break; // only do 1 at a time
+      }
+    }
+
+    // estimate font height and width - 1 letter for now
+    if (key == 'letter') {
+      const [ch, x, y] = DrawnObjects[i][key];
+      // assume 32 pixel by 32 pixel
+      if (isPointInRectangle(eraserX, eraserY, x,y,x+32,y+32,6)) {
+        // console.log('Found letter - removing it!')
+        DrawnObjects.splice(i, 1)
+        break; // only do 1 at a time
+      }
+    }
+  }
+}
+
+function nearestSnap(x,y) {
+  // find nearest x,y snap point
+  // use gridSpacing to get snapResolution
+  x += (gridSpacing / 2);  // move to middle
+  y += (gridSpacing / 2);  // move to middle
+  m1 = x % gridSpacing;  // how far off are we
+  m2 = y % gridSpacing;  // how far off are we
+  x2 = x - m1;  // get the nearest snap value 
+  y2 = y - m2;  // get the nearest snap value
+  return [Math.round(x2),Math.round(y2)];
 }
