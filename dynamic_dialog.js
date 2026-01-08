@@ -1,5 +1,7 @@
 let resolveModalPromise; // Global variable to store the promise's resolve function
 let dialog = null;
+let curDialogType;
+let curDrawnObject;
 
 // TODO - remember previous values for default select and text input
 
@@ -7,9 +9,40 @@ let dialog = null;
 let MakeDialog = function() {}
 let GetControlValues = function() {}
 
+// format list of objects
+// each object [text, {object_name:[param1, param2, paramX]}]
+// note: last param is the selected value (or current value for input box)
+const gridDialog = [
+    ['Grid',{'gridOnOff':['select','On','Off','Off']}],
+    ['Grid Type',{'gridType':['select','Dots','Grid','Dots']}],
+    ['Grid Spacing',{'gridSpacing':['input','25']}], // 25 is default value for input box
+    ['Snap',{'snapOnOff':['select','On','Off','Off']}]
+]
+
+const letterDialog = [
+    ['Choose Letter(s)',{'selLetter':['input','Y']}],
+    ['Letter Size',{'ltrSize':['select','16','32','64','32']}],
+    ['Font ',{'ltrFont':['select','Courier New','Verdana','Courier New']}]
+]
+
+const gearDialog = [
+    ['Line Width',{'lineWidth':['input','1']}],
+    ['Fill Shape',{'fillShape':['select','Off','On','Off']}]]
+
+const updateDialog = [
+    ['Current Objects',{'curObjects':['textarea','10','60']}], // size of textarea rows,cols
+    ['Replace Objects',{'btnReplace':['button','Update','updateObjects']}]] // callback is updateObjects
+    
+const dialog_map = {
+    'grid':['#dynamicDialog','Grid Settings',gridDialog],
+    'letter':['#dynamicDialog','Letter Values',letterDialog],
+    'gear':['#dynamicDialog','Draw Settings',gearDialog],
+    'update':['#dynamicDialog','Save or Update Objects',updateDialog]
+}
+    
 // --------- ASYNC MAJIC STARTS HERE ---------------
 closeModal = (result) => {
-    result_list = GetControlValues(gridDialog);
+    result_list = GetControlValues();
     dialog.close();
     if (resolveModalPromise) {
         resolveModalPromise([result, result_list]); // Resolve the stored promise with the result
@@ -31,29 +64,22 @@ function openModalAsync(parentDiv,title,dialogObj) {
  * The main asynchronous function that "waits" for the modal to close.
  */
 // call this function to do the dialog - need to clean up interface
-async function handleAction() {
-    // document.getElementById('status').innerText = 'Status: Opening modal and waiting...';
-
+async function handleAction(dialogType, drawnObject=null) {
+    // dialog types: grid, letter
+    curDialogType = dialogType; // save for later
+    curDrawnObject = drawnObject; // save for later
     // Use await to pause execution until openModalAsync resolves (i.e., modal is closed)
-    const [result,result_list] = await openModalAsync('#dynamicDialog','Grid Settings',gridDialog);
-    // This code only runs AFTER the modal has been closed
-    //console.log("result",result);
-    // console.log("result_list",result_list);
-    // console.log(typeof(result_list));
-    // console.log(result_list.length);
-    // make it look nice
-    // let txt = '';
-    //const prettyJson = JSON.stringify(result_list, null, 2);
-    // console.log(prettyJson);
+    [a,b,c] = dialog_map[dialogType]
+    const [result,result_list] = await openModalAsync(a,b,c);
+    // save values
     let txt = '';
     Object.keys(result_list).forEach(key =>{
         txt += key + ':' + result_list[key] + '\n';
     })
     $('#dialogResult').val(txt);
-    dialogDone('grid_dialog',result_list);
+    dialogDone(curDialogType,result_list,curDrawnObject);
 }
 // --------- ASYNC MAJIC ENDS HERE ---------------
-
 
 $(document).ready( () => {
     // dialog = document.querySelector("dialog");
@@ -70,16 +96,6 @@ $(document).ready( () => {
         // setDialogResult(gridOnOff, gridType, snapOnOff);
         dialog.close();
     });
-
-    // format list of objects
-    // each object [text, {object_name:[param1, param2, paramX]}]
-    // note: paramX is the selected value (or current value for input box)
-    gridDialog = [
-        ['Grid',{'gridOnOff':['select','On','Off','Off']}],
-        ['Grid Type',{'gridType':['select','Dots','Grid','Dots']}],
-        ['Grid Spacing',{'gridSpacing':['input','25']}], // 25 is default value for input box
-        ['Snap',{'snapOnOff':['select','On','Off','Off']}]
-    ]
 
     const AppendRow = (targetDiv, rowClass) => {
         var $tDiv = $(targetDiv);
@@ -143,6 +159,28 @@ $(document).ready( () => {
             var $inpElelment = $(inpStr);
             $tDiv.append($inpElelment);            
         } 
+        if (input_obj_type == 'textarea') { // text area
+            // TODO get DrawnObjects
+            const r = Number(input_obj[ObjName][1]);
+            const c = Number(input_obj[ObjName][2]);
+            const data = GetDrawnObjects() // should be more generic if we reuse textarea
+            // <textarea id="w3review" name="w3review" rows="4" cols="50">
+            var inpStr = '<textarea class="form-control" id="' + objId + 
+              '" rows="' + r + 
+              '" cols="' + c + 
+              '">' + data + '</textarea>'
+            var $inpElelment = $(inpStr);
+            $tDiv.append($inpElelment);            
+        } 
+        if (input_obj_type == 'button') { // button
+            // TODO save to DrawnObjects
+            const txt = input_obj[ObjName][1];
+            const callback = input_obj[ObjName][2];
+            // using string templating
+            let btnStr = `<button onclick="${callback}()" id="${objId}" class="btn-primary">${txt}</button>`
+            var $btnElement = $(btnStr);
+            $tDiv.append($btnElement);
+        }         
     };
     
     MakeDialog = (aParent_div, title, dialogObj) => {
@@ -177,9 +215,10 @@ $(document).ready( () => {
           dialog.showModal();
     };
 
-    GetControlValues = (dialogObj) => {
+    GetControlValues = () => {
         // return user selected values
         var result_list = [];
+        dialogObj = dialog_map[curDialogType][2];
         for (const row of dialogObj) {
             input_obj = row[1];
             ObjName = String(Object.keys(input_obj)[0]);
@@ -213,17 +252,9 @@ $(document).ready( () => {
                 }
             }
         })
+        // also update drawnObject - should be a callback to sketch function
         return result_list;
     };
-
-
-
-    // $('#dynDialog').click(function(){
-    //     // MakeDialog('#dynamicDialog','Grid Settings',gridDialog);
-    //    const result_list = handleAction();
-    //    console.log("value",result_list);
-    // });
-
 });
 
 /*

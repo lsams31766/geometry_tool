@@ -28,7 +28,7 @@
 
 let paintWindow;
 let currentTool = "pencil";
-let currentColor = "fuchsia";
+let currentColor = "blue";
 let icon;
 let toolIcons = {};
 
@@ -39,6 +39,11 @@ let Snap = 'Off';
 
 let DrawnObjects = [];
 
+let CurrentObjectInDialog; // after dialog, set this object's parameters
+let dialogInProgress = false; // so letter dialog can work
+let lastFontSize = 32;
+let curLineWidth = 1;
+let curDrawFill = false;
 /*
 const AVAILABLE_TOOLS = [
   "eraser",
@@ -58,7 +63,10 @@ const AVAILABLE_TOOLS = [
     "circle",
     "letter",
     "grid",
-    "eraser"
+    "eraser",
+    "undo",
+    "gear",
+    "update"
   ];
   
 const WEB_COLORS = [
@@ -166,6 +174,15 @@ class PaintWindow {
     );
   }
 
+// forward declare
+updateObjects() {
+  // // called from update dialog, take the id=curObjects textarea and get all objects
+  // // repace DrawnOjects with these
+  // let strObjects = $('#curObjects').val();
+  // console.log('IN dynamic_dialog: updateObjects',strObjects);
+}
+
+
   draw() {
     if (!this.visible) return;
 
@@ -225,6 +242,10 @@ class PaintWindow {
     const x = this.x + ICON_SIZE + MARGIN * 5;
     const y = this.y + TITLEBAR_H - PADDING * 1.5;
     text(this.title, x, y);
+
+    // show mouse x,y
+    // subtradt off positon of drawing area
+    text(`X: ${mouseX - 200}, Y: ${mouseY - 50}`, 10, 10);
   }
 
   mousePressed(mx, my) {
@@ -306,8 +327,7 @@ class Button {
       // console.log("mousePressed Button current tool",currentTool);
       // if grid is current tool, show the grid dialog
       if (currentTool == 'grid') {
-        handleAction();
-        console.log("handleAction done");  
+        handleAction('grid'); // processed in DialogDone function
       }
       if (currentTool == 'eraser') {
         cursor(CROSS);
@@ -315,6 +335,15 @@ class Button {
         if (keyIsPressed === true) {
           eraseAll(); // remove all user objects - we should have an undo!
         };
+      }
+      if (currentTool == 'undo') {
+        eraseLastDrawnObject();
+      }
+      if (currentTool == 'gear') {
+        handleAction('gear'); // processed in DialogDone function
+      }
+      if (currentTool == 'update') {
+        handleAction('update'); // processed in DialogDone function
       }
     }
   }
@@ -582,7 +611,7 @@ class Canvas {
             [x1,y1] = nearestSnap(x1,y1);
             [x2,y2] = nearestSnap(x2,y2);
           }
-          const o = {'line':[x1,y1,x2,y2]};
+          const o = {'line':[x1,y1,x2,y2,currentColor,curLineWidth,curDrawFill]};
           DrawnObjects.push(o);  
         }
         break;
@@ -595,26 +624,32 @@ class Canvas {
             [x1,y1] = nearestSnap(x1,y1);
             [x2,y2] = nearestSnap(x2,y2);
           }
-          const o = {'rect':[x1, y1, x2 - x1, y2 - y1]};
+          const o = {'rect':[x1, y1, x2 - x1, y2 - y1, currentColor,curLineWidth,curDrawFill]};
           DrawnObjects.push(o);  
         }
         break;
 
       case "letter":
+        if (dialogInProgress == true) {
+          return; // do not retrigger this during dialog
+        }
         // Todo adjust letter parameters
         // console.log(persist)
         c.textFont('Courier New');
         c.textStyle(NORMAL);
-        c.textSize(64);
-        c.textAlign(CENTER, CENTER);
-        c.fill(0, 0, 255); // RGB: Red, Green, Blue (0-255)
-        //c.text("X", x1, y1);
+        c.textSize(lastFontSize);
+        c.textAlign(LEFT, CENTER);
+        c.fill(currentColor); 
 
         if (persist == false) {
           c.text("Y", x2, y2);
         } else {
+          dialogInProgress = true;
           const o = {'letter':["Y",x2,y2]};
-          DrawnObjects.push(o);  
+          // dialog to see what letter, font, etc we want
+          console.log("Letter Dialog");
+          LetterDialog(o); // the callback will add the object
+          //DrawnObjects.push(o);  
         }
         //c.text("Z", mouseX, mouseY);
 
@@ -638,7 +673,7 @@ class Canvas {
           const o = {'circle':[x1 + radiusX, 
                               y1 + radiusY,
                               Math.abs(radiusX * 2), 
-                              Math.abs(radiusY * 2)]};
+                              Math.abs(radiusY * 2),currentColor,curLineWidth,curDrawFill]};
           DrawnObjects.push(o);  
         }
         break;
@@ -881,9 +916,9 @@ function mouseReleased() {
   paintWindow.mouseReleased();
 }
 
-function dialogDone(dialog_name, result_list) {
+function dialogDone(dialog_name, result_list, cur_drawn_object=null) {
   console.log("dialogDone result_list", dialog_name, result_list);
-  if (dialog_name == 'grid_dialog') {
+  if (dialog_name == 'grid') {
     // set the grid as per user configuration
     /*
        gridDialog = [
@@ -901,6 +936,26 @@ function dialogDone(dialog_name, result_list) {
     gridSpacing = Number(result_list['gridSpacing']);
     Snap = result_list['snapOnOff'];
   }
+  if (dialog_name == 'letter') {
+    // return values: 'selLetter','ltrSize','ltrFont'
+    // adjust drawnObject details
+    let [ch, x, y] = cur_drawn_object['letter'];
+    ch = result_list['selLetter'];
+    s = result_list['ltrSize'];
+    f = result_list['ltrFont'];
+    co = currentColor;
+    lastFontSize = Number(s);
+    const o = {'letter':[ch,x,y,s,f,co]};
+    DrawnObjects.push(o);
+  }
+  if (dialog_name == 'gear') {  // drawing settings
+    // return values: 'lineWidth','fillShape'
+    // set global variables
+    curLineWidth = Number(result_list['lineWidth']);
+    curDrawFill = result_list['fillShape'];
+    // set gloval 
+  }
+  dialogInProgress = false;
 }
 
 function drawGrid() {
@@ -962,22 +1017,45 @@ function drawObjects() {
       //first_line = DrawnObjects[0];
       key = Object.keys(DrawnObjects[obj])[0]; 
       if (key == 'line') {
-        const [x1, y1, x2, y2] = DrawnObjects[obj][key]; // Yay destructuring
+        const [x1, y1, x2, y2, co, clw] = DrawnObjects[obj][key]; // Yay destructuring
+        c.stroke(co); // color
+        c.strokeWeight(clw);
         c.line(x1, y1, x2, y2);
       }
       if (key == 'rect') {
-        const [x1, y1, w, h] = DrawnObjects[obj][key];
-        c.noFill();
+        const [x1, y1, w, h, co, clf, cdf] = DrawnObjects[obj][key];
+        c.stroke(co);
+        c.strokeWeight(clf);
+        if (cdf == 'On') {
+          c.fill(co);
+        }
+        else {
+          c.noFill();
+        }
         c.rect(x1, y1, w, h);
       }
       if (key == 'letter') {
-        const [ch, x, y] = DrawnObjects[obj][key];
+        const [ch, x, y, s, f, co] = DrawnObjects[obj][key];
+        // set size and font
+        c.textFont(f);
+        c.textStyle(NORMAL);
+        c.textAlign(LEFT, CENTER)
+        c.fill(co); 
+        c.textSize(Number(s));
+        c.strokeWeight(1);
         c.text(ch, x, y);
       }
       if (key == 'circle') {
-        const [x, y, r1, r2] = DrawnObjects[obj][key];
-        c.noFill();
-        c.ellipse(x, y, r1, r1);
+        const [x, y, d1, d2, co, clf, cdf] = DrawnObjects[obj][key];
+        c.stroke(co); // color
+        c.strokeWeight(clf);
+        if (cdf == 'On') {
+          c.fill(co);
+        }
+        else {
+          c.noFill();
+        }
+        c.ellipse(x, y, d1, d1);  // make the ellipse a circle
       }
     }
   }
@@ -1069,8 +1147,8 @@ function erase_object(eraserX, eraserY) {
       }
     }
     if (key == 'circle') {
-      const [x, y, r1, r2] = DrawnObjects[i][key];
-      if (isPointInCircle(eraserX, eraserY, x, y, r1, 6)) {
+      const [x, y, d1, d2] = DrawnObjects[i][key];
+      if (isPointInCircle(eraserX, eraserY, x, y, d1/2, 6)) {
         // console.log('Found circle - removing it!')
         DrawnObjects.splice(i,1);
         break; // only do 1 at a time
@@ -1079,9 +1157,11 @@ function erase_object(eraserX, eraserY) {
 
     // estimate font height and width - 1 letter for now
     if (key == 'letter') {
-      const [ch, x, y] = DrawnObjects[i][key];
-      // assume 32 pixel by 32 pixel
-      if (isPointInRectangle(eraserX, eraserY, x,y,x+32,y+32,6)) {
+      const [ch, x, y, s, f, co] = DrawnObjects[i][key];
+      // use font size
+      const offset = Number(s)
+      const tl = ch.length;
+      if (isPointInRectangle(eraserX, eraserY, x,y,x+(offset*tl),y+offset,6)) {
         // console.log('Found letter - removing it!')
         DrawnObjects.splice(i, 1)
         break; // only do 1 at a time
@@ -1100,4 +1180,71 @@ function nearestSnap(x,y) {
   x2 = x - m1;  // get the nearest snap value 
   y2 = y - m2;  // get the nearest snap value
   return [Math.round(x2),Math.round(y2)];
+}
+
+function LetterDialog(o) {
+  // given draw object, use dialog to set letter, font ..
+  CurrentObjectInDialog = o; // save, after dialog 
+  handleAction('letter',o);
+}
+
+function eraseLastDrawnObject() {
+  const l = DrawnObjects.length;
+  if (l == 0) {
+    return; // no objects to delete
+  }
+  DrawnObjects.splice(l-1, 1);  // delete last drawn object
+}
+
+function GetDrawnObjects() {
+  // for update objects Dialog
+  let txt = ''
+  const l = DrawnObjects.length;
+  if (l > 0 ) {
+    for (let obj = 0; obj < l; obj++) {
+      key = Object.keys(DrawnObjects[obj])[0]; 
+      if (key == 'line') {
+        const [x1, y1, x2, y2, co, clw] = DrawnObjects[obj][key]; // Yay destructuring
+        txt += `{"line":[${x1}, ${y1}, ${x2}, ${y2}, "${co}", ${clw}]},\n`;
+      }
+      if (key == 'rect') {
+        const [x1, y1, w, h, co, clf, cdf] = DrawnObjects[obj][key];
+        txt += `{"rect":[${x1}, ${y1}, ${w}, ${h}, "${co}", ${clf}, ${cdf}]},\n`;
+      }
+      if (key == 'letter') {
+        const [ch, x, y, s, f, co] = DrawnObjects[obj][key];
+        txt += `{"letter":["${ch}", ${x}, ${y}, ${s}, "${f}", "${co}"]},\n`;
+      }
+      if (key == 'circle') {
+        const [x, y, d1, d2, co, clf, cdf] = DrawnObjects[obj][key];
+        txt += `{"circle":[${x}, ${y}, ${d1}, ${d2}, "${co}", ${clf}, ${cdf}]},\n`;
+      }
+    }
+    // remove last comma space \n
+    txt = txt.slice(0, -2)
+  }
+  return txt
+}
+
+function updateObjects() {
+  // called from update dialog, take the id=curObjects textarea and get all objects
+  // repace DrawnOjects with these
+  let strObjects = $('#curObjects').val();
+  console.log('updateObjects',strObjects);
+  lines = strObjects.split('\n')
+  l = lines.length;
+  // split string at \n
+  if (l > 0 ) {
+    DrawnObjects = []
+    for (let i = 0; i < l; i++) {
+      // remove last , if present
+      let curLine = lines[i];
+      if (curLine.at(-1) == ',') {
+        curLine = curLine.slice(0, -1);
+      }
+      const jsObject = JSON.parse(curLine);
+      console.log(jsObject)
+      DrawnObjects.push(jsObject);
+    }
+  }
 }
